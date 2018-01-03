@@ -79,7 +79,7 @@ rm(i, dat, x, y)
 
 write.table(all_pqtl, file = "~/Documents/eqtl.pqtl.ocac.project/pqtl/results/all_clearcell")
 
-###### Looping MR analysis through proteins ###### 
+#### Looping MR analysis through proteins #### 
 
 names(all_pqtl)[names(all_pqtl) == "protein"] <- "exposure"
 names(all_pqtl)[names(all_pqtl) == "N"] <- "samplesize.exposure"
@@ -93,37 +93,47 @@ pqtl_results <- pqtl_results[complete.cases(pqtl_results), ]
 
 write.table(pqtl_results, file = "~/Documents/eqtl.pqtl.ocac.project/pqtl/results/mr_clearcell")
 
-####
-
 #### Extracting SNPs for BEDtools analysis ####
 
-all <- read.csv("~/Documents/eqtl.pqtl.ocac.project/pqtl/pqtl_ocac_merge/all_pqtl_ocac", sep="")
-proteins <- all[,"exposure"]
-mr_loci <- all[all$exposure %in% proteins,]
-mr_loci <- mr_loci [ mr_loci$SNP != "All - Inverse variance weighted", ]
-y <- cis.exposure[ , c("chr", "SNP")]
-all_loci <- all
-all_loci <- merge(all_loci, y)
-all_loci <- unique(all_loci) 
-all_loci <- all_loci[, c("chr", "SNP", "exposure")]
-all_loci$SNP <- as.numeric(levels(all_loci$SNP))[all_loci$SNP]
-all_loci$start <- all_loci$SNP - 1
-all_loci$stop <- all_loci$SNP
-all_loci <- all_loci[, c("chr", "start", "stop", "exposure")]
-all_loci$chr <- paste( "chr", all_loci$chr, sep = "")
-write.table(all_loci, file = "~/Documents/eqtl.pqtl.ocac.project/eqtl/all_loci", quote = FALSE, row.names = FALSE, col.names = FALSE, sep = "\t")
+pqtl_loci <- pqtl_exposure[, c(2,3,10)]
+pqtl_loci$start <- pqtl_loci$pos -1
+pqtl_loci$stop <- pqtl_loci$pos
+pqtl_loci <- pqtl_loci[, c("chr", "start", "stop", "protein")]
+pqtl_loci$chr <- paste( "chr", pqtl_loci$chr, sep = "")
+write.table(pqtl_loci, file = "~/Documents/eqtl.pqtl.ocac.project/pqtl/pqtl_loci", quote = FALSE, row.names = FALSE, col.names = FALSE, sep = "\t")
+
+#### Finding the most likely causal protein within each genome bin ####
+
+#### Load files ####
+pqtls <- pqtl_exposure
+ld_all <- read.delim("~/Documents/eqtl.pqtl.ocac.project/eqtl/EUR/fourier_ls-chr2.bed")
+oc_chr <- read.csv("~/Documents/eqtl.pqtl.ocac.project/ocac.summary/Summary_chr2.txt")
+
+#### Load LD blocks ####
+n <- paste(1:length(ld_all$chr))
+ld_all <- cbind(ld_all, n)
+rm(n)
+
+#### Organise OC dataframe ####
+oc_chr <- oc_chr[ oc_chr$X1000G_SNPname != "",  ]
+oc_chr <- oc_chr[, c(2, 3, 4, 9:12, 17:20, 29:32, 37:40, 49:52, 53:56)]
+names(oc_chr)[names(oc_chr) == "X1000G_SNPname"] <- "rsid"
+names(oc_chr)[names(oc_chr) == "Position"] <- "pos"
+names(oc_chr)[names(oc_chr) == "Chromosome"] <- "chr"
+oc_chr$rsid <- sub(":\\S*", "", oc_chr$rsid)
 
 
+#### merge oc, ld, eqtl files ####
+f = function(x) min(which(x >= ld_all$start & x <= ld_all$stop))
+f = Vectorize(f)
+oc_chr$x = f(oc_chr$pos)
+ld_snp <- merge(oc_chr, pqtls, by = c("chr", "pos"))
 
+#### Find top SNP per LD block ####
 
+ld_snp <- ld_snp %>% 
+  group_by(x, protein) %>%
+  top_n(-1, pval.exposure)
 
-mr_loci <- merge( mr_loci, y)
-mr_loci <- unique(mr_loci) 
-mr_loci <- mr_loci[, c("chr", "SNP", "exposure")]
-mr_loci$SNP <- as.numeric(levels(mr_loci$SNP))[mr_loci$SNP]
-mr_loci$start <- mr_loci$SNP - 1
-mr_loci$stop <- mr_loci$SNP
-mr_loci <- mr_loci[, c("chr", "start", "stop", "exposure")]
-mr_loci$chr <- paste( "chr", mr_loci$chr, sep = "")
+write.table(ld_snp, file = "~/Documents/eqtl.pqtl.ocac.project/pqtl/results/ld_blocks/chr2", quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")
 
-write.table(mr_loci, file = "~/Documents/eqtl.pqtl.ocac.project/eqtl/mr_loci", quote = FALSE, row.names = FALSE, col.names = FALSE, sep = "\t")
